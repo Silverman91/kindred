@@ -1,0 +1,18 @@
+{
+  "name": "Silverman's Kindred",
+  "short_name": "Kindred",
+  "description": "A gentle hero collector. Gather inner allies like courage, rest and hope, and face the shadows together in turn-based battles.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#15161f",
+  "theme_color": "#15161f",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
