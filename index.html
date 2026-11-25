@@ -249,13 +249,14 @@ h2{margin:4px 0;font-size:24px}
     <div class="note">every call brings one ally. meeting one you already know makes them stronger (+1 star).</div>
     <div class="chap"><div class="d" id="rates"></div><div class="d" id="pity"></div></div>
     <div class="row"><button class="btn" id="call1">call once · ✦ 100</button><button class="btn" id="call10">call ten · ✦ 900</button></div>
+    <div style="margin-top:10px;text-align:center"><button class="btn ghost" id="callAd" style="border-color:var(--gold);color:var(--gold)" hidden>✨ free call (watch ad)</button></div>
     <div class="note">ten calls always include at least one rare ally or better.</div>
   </div>
 </div>
 
 <!-- battle hud -->
 <div id="bhud" hidden>
-  <div id="btop"><button class="back small" id="flee">‹ leave</button><span class="pill small" id="bStage">1-1</span><span class="pill small" id="bKeepsake">☕</span><span><button class="tog" id="autoBtn">auto</button><button class="tog" id="speedBtn">×1</button></span></div>
+  <div id="btop"><button class="back small" id="flee">II pause</button><span class="pill small" id="bStage">1-1</span><button class="pill small" id="bKeepsake" style="border-color:var(--line)">☕</button><span><button class="tog" id="autoBtn">auto</button><button class="tog" id="speedBtn">×1</button></span></div>
   <div id="turns"></div>
   <div id="bbot"><div id="who"></div><div id="bBarRow"><div id="breath"><div id="brFill"></div><i style="left:10%"></i><i style="left:20%"></i><i style="left:30%"></i><i style="left:40%"></i><i style="left:50%"></i><i style="left:60%"></i><i style="left:70%"></i><i style="left:80%"></i><i style="left:90%"></i><span id="brNum">5 / 10</span></div><button id="deepBreathBtn" class="dbBtn" title="Deep Breath (4 breath)"><span class="dbIcon">✦</span><span class="dbTxt">deep breath</span><span class="dbCost">4</span><div class="dbCd"></div></button></div><div id="hand"></div></div>
 </div>
@@ -264,11 +265,86 @@ h2{margin:4px 0;font-size:24px}
 <div class="modal" id="detail" hidden><div class="panel" id="detailBody"></div></div>
 <div class="modal" id="reveal" hidden><div class="panel"><h2 style="text-align:center">new light</h2><div class="reveal" id="revealGrid"></div><div class="row"><button class="btn" id="revealOk">lovely</button></div></div></div>
 <div class="modal" id="bresult" hidden><div class="panel" id="bresultBody"></div></div>
+<div class="modal" id="bpause" hidden><div class="panel" style="text-align:center"><h2>paused</h2><div class="note">take a breath. your allies will wait.</div><div class="row"><button class="btn" id="bpResume">resume</button><button class="btn ghost" id="bpQuit">leave battle</button></div></div></div>
 <div class="modal vignetteModal" id="vignetteModal" hidden><div class="panel gold" id="vignetteBody"></div></div>
 
 <script>
 (()=>{
 'use strict';
+// Portal SDK auto-loader & init (CrazyGames, Poki)
+try{
+  const h=location.hostname,q=location.search;
+  const initCG=()=>{try{if(window.CrazyGames&&window.CrazyGames.SDK&&!window._cgInit){window._cgInit=true;Promise.resolve(window.CrazyGames.SDK.init()).catch(()=>{})}}catch(e){}};
+  const initPoki=()=>{try{if(window.PokiSDK&&!window._pokiInit){window._pokiInit=true;Promise.resolve(window.PokiSDK.init()).then(()=>{try{window.PokiSDK.gameLoadingFinished()}catch(e){}}).catch(()=>{})}}catch(e){}};
+  if(window.CrazyGames&&window.CrazyGames.SDK)initCG();
+  else if(/[?&]portal=crazygames\b/.test(q)||h.includes('crazygames')||h.includes('1001juegos')){
+    const s=document.createElement('script');s.src='https://sdk.crazygames.com/crazygames-sdk-v3.js';
+    s.onload=initCG;document.head.appendChild(s);
+  }
+  if(window.PokiSDK)initPoki();
+  else if(/[?&]portal=poki\b/.test(q)||h.includes('poki')){
+    const s=document.createElement('script');s.src='https://game-cdn.poki.com/scripts/v2/poki-sdk.js';
+    s.onload=initPoki;document.head.appendChild(s);
+  }
+}catch(e){}
+
+/* ---------------- universal monetization & ads (Android, CrazyGames, Poki, Test) ---------------- */
+const Ads={
+  mode(){
+    if(window.GameAds)return 'android';
+    if(window.CrazyGames&&window.CrazyGames.SDK)return 'crazygames';
+    if(window.PokiSDK)return 'poki';
+    if(/[?&]ads=test\b/.test(location.search))return 'test';
+    return 'none';
+  },
+  on(){return this.mode()!=='none'},
+  preload(){try{if(window.GameAds)GameAds.preload()}catch(e){}},
+  gameplayStart(){
+    try{
+      if(window.CrazyGames&&window.CrazyGames.SDK&&window.CrazyGames.SDK.game)window.CrazyGames.SDK.game.gameplayStart();
+      else if(window.PokiSDK)window.PokiSDK.gameplayStart();
+    }catch(e){}
+  },
+  gameplayStop(){
+    try{
+      if(window.CrazyGames&&window.CrazyGames.SDK&&window.CrazyGames.SDK.game)window.CrazyGames.SDK.game.gameplayStop();
+      else if(window.PokiSDK)window.PokiSDK.gameplayStop();
+    }catch(e){}
+  },
+  show(cb){
+    const m=this.mode();
+    if(m==='android'){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      let done=false;const h=e=>{if(done)return;done=true;removeEventListener('gameads',h);try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb(e.detail)};
+      addEventListener('gameads',h);
+      try{GameAds.showRewarded()}catch(e){h({detail:'unavailable'})}
+    }else if(m==='crazygames'&&window.CrazyGames.SDK.ad){
+      window.CrazyGames.SDK.ad.requestAd('rewarded',{
+        adStarted:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}},
+        adFinished:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb('rewarded')},
+        adError:()=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb('unavailable')}
+      });
+    }else if(m==='poki'&&window.PokiSDK){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      window.PokiSDK.rewardedBreak().then(success=>{
+        try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){}
+        cb(success?'rewarded':'closed');
+      }).catch(()=>{
+        try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){}
+        cb('unavailable');
+      });
+    }else if(m==='test'){
+      try{Sound&&Sound.setPaused&&Sound.setPaused(true)}catch(e){}
+      testAd(r=>{try{Sound&&Sound.setPaused&&Sound.setPaused(false)}catch(e){};cb(r)});
+    }else{
+      cb('unavailable');
+    }
+  }
+};
+function testAd(cb){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:grid;place-items:center;font:600 18px Quicksand,system-ui,sans-serif;text-align:center;padding:20px';let n=5;
+  d.innerHTML='<div><div style="opacity:.55;font-size:13px;letter-spacing:.08em">TEST AD</div><div class="taN" style="font-size:48px;margin:10px 0">5</div><div>a real ad would play here</div><button class="taX" style="margin-top:24px;font:inherit;font-size:14px;background:none;color:#aaa;border:1px solid #555;border-radius:99px;padding:8px 18px;cursor:pointer">close early</button></div>';
+  document.body.appendChild(d);const iv=setInterval(()=>{n--;d.querySelector('.taN').textContent=n;if(n<=0){clearInterval(iv);d.remove();cb('rewarded')}},1000);
+  d.querySelector('.taX').onclick=()=>{clearInterval(iv);d.remove();cb('closed')}}
 const $=id=>document.getElementById(id);
 const cv=$('cv'),ctx=cv.getContext('2d');
 const rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.random()*a.length|0],clamp=(v,a,b)=>v<a?a:v>b?b:v,lerp=(a,b,t)=>a+(b-a)*t,TAU=Math.PI*2;
@@ -1017,7 +1093,7 @@ function openDetail(id){const A=AL[id],o=SV.owned[id],s=statsOf(id,o),inT=SV.tea
    '<div class="tags"><span class="tag" style="color:'+E.c+'">'+svgI(E.ic)+E.n+'</span><span class="tag" style="color:#e2ddef">'+svgI(C.ic)+C.n+'</span><span class="tag" style="color:'+RCOL[A.r]+'">'+RAR[A.r]+'</span></div><div class="note" style="text-align:left">level '+o.lv+' · '+o.xp+'/'+xpNeed(o.lv)+' xp</div><div class="note" style="text-align:left">costs <b style="color:var(--ink)">'+costOf(id)+' breath</b> · '+HOW[A.role]+'</div></div></div>'+
    '<div class="lore">“'+L.lore+'”</div>'+
    '<div class="stat"><div><b>'+s.hp+'</b>health</div><div><b>'+s.atk+'</b>attack</div><div><b>'+s.def+'</b>defence</div><div><b>'+s.spd+'</b>speed</div></div>'+
-   '<div class="skill passive" style="--ec:#e2ddef"><span class="ski">'+svgI(C.ic)+'</span><div><b>'+C.p+'</b> · '+C.n+', always on</div><div>'+C.pd+'</div></div>'+A.sk.map(sk=>skillHTML(sk,E.c)).join('')+'<div class="skill ultk" style="--ec:#ffd98a"><span class="ski">'+svgI(EL.open.ic)+'</span><div><b>'+A.ult.n+'</b> · ultimate</div><div>'+A.ult.d+'. charges while they fight; tap their card when it glows</div></div>'+
+   '<div class="skill passive" style="--ec:#e2ddef"><span class="ski">'+svgI(C.ic)+'</span><div><b>'+C.p+'</b> · '+C.n+', always on</div><div>'+C.pd+'</div></div>'+A.sk.map(sk=>skillHTML(sk,E.c)).join('')+'<div class="skill ultk" style="--ec:#ffd98a"><span class="ski">'+svgI(EL.open.ic)+'</span><div><b>'+A.ult.n+'</b> · ultimate</div><div>'+A.ult.d+'. charges while they fight and casts automatically when full</div></div>'+
    (friendsOf(id).length?'<div class="note">friends: '+friendsOf(id).map(f=>'<b style="color:var(--ink)">'+AL[f.id].n+'</b> ('+f.n+')').join(', ')+'. together they both get +10% attack and defence</div>':'')+
    vHTML+
    '<div class="note"><span style="color:'+E.c+'">'+E.n+'</span> is strong against <span style="color:'+EL[BEATS[A.el]].c+'">'+EL[BEATS[A.el]].n+'</span> shadows and weak against <span style="color:'+EL[weakTo].c+'">'+EL[weakTo].n+'</span> ones</div><div class="row"><button class="btn" id="dTeam">'+(inT?'take out of team':'add to team')+'</button><button class="btn ghost" id="dClose">close</button></div>';
@@ -1048,9 +1124,10 @@ $('vignetteModal').onclick=e=>{if(e.target===$('vignetteModal'))$('vignetteModal
 /* ================= calling allies ================= */
 const RATES=[0,.55,.33,.10,.02];
 function renderCall(){$('rates').innerHTML='chances · <span style="color:'+RCOL[1]+'">common 55%</span> · <span style="color:'+RCOL[2]+'">rare 33%</span> · <span style="color:'+RCOL[3]+'">epic 10%</span> · <span style="color:'+RCOL[4]+'">legendary 2%</span>';
-  $('pity').textContent='a legendary ally is guaranteed within '+(60-SV.pity)+' calls';$('call1').disabled=SV.light<100;$('call10').disabled=SV.light<900}
+  $('pity').textContent='a legendary ally is guaranteed within '+(60-SV.pity)+' calls';$('call1').disabled=SV.light<100;$('call10').disabled=SV.light<900;
+  if($('callAd'))$('callAd').hidden=!Ads.on()}
 function rollRarity(forceRare){SV.pity++;if(SV.pity>=60){SV.pity=0;return 4}let q=Math.random(),r=1;for(let k=4;k>=1;k--){if(q<RATES[k]){r=k;break}q-=RATES[k]}if(r===4)SV.pity=0;if(forceRare&&r<2)r=2;return r}
-function callAllies(n){const cost=n===10?900:100;if(SV.light<cost)return;SV.light-=cost;SV.calls+=n;const got=[];
+function callAllies(n,isFree=false){const cost=isFree?0:(n===10?900:100);if(SV.light<cost)return;SV.light-=cost;SV.calls+=n;const got=[];
   for(let i=0;i<n;i++){const r=rollRarity(n===10&&i===n-1&&!got.some(g=>AL[g.id].r>=2)),id=pick(ALLIES.filter(a=>a.r===r)).id,had=!!SV.owned[id];
     if(!had)SV.owned[id]={lv:1,xp:0,st:AL[id].r};else if(SV.owned[id].st<6)SV.owned[id].st++;else SV.light+=40;
     got.push({id,isNew:!had})}
@@ -1059,6 +1136,7 @@ function callAllies(n){const cost=n===10?900:100;if(SV.light<cost)return;SV.ligh
   $('revealGrid').innerHTML=got.map((g,i)=>{const A=AL[g.id];return '<div class="card r'+A.r+'" style="animation-delay:'+(i*.06)+'s"><div class="aw"><img class="art" src="'+cardArt(g.id)+'" alt="">'+badges(A)+(g.isNew?'<span class="tm">new</span>':'')+'</div><b>'+A.n+'</b><span class="s2">'+(g.isNew?RAR[A.r]:'+1 star')+'</span><span class="cover" style="animation-delay:'+(.35+i*.16)+'s"></span></div>'}).join('');
   $('reveal').hidden=false;if(best>=3)setTimeout(()=>Sound.play('win'),350+got.length*160)}
 $('call1').onclick=()=>{Sound.init();callAllies(1)};$('call10').onclick=()=>{Sound.init();callAllies(10)};
+if($('callAd'))$('callAd').onclick=()=>{const b=$('callAd');b.disabled=true;Sound.init();Ads.show(r=>{b.disabled=false;if(r==='rewarded')callAllies(1,true)})};
 $('revealOk').onclick=()=>{$('reveal').hidden=true;Sound.setMode('menu',0);refresh()};
 
 /* ================= battle: lane defence ================= */
@@ -1146,15 +1224,15 @@ function makeEndlessWave(w){
   }
   return list;
 }
-function startBattle(c,s){Sound.init();const deck=SV.team.filter(id=>SV.owned[id]).slice(0,TEAM_MAX);if(!deck.length)return;
+function startBattle(c,s){Sound.init();Ads.preload();Ads.gameplayStart();const deck=SV.team.filter(id=>SV.owned[id]).slice(0,TEAM_MAX);if(!deck.length)return;
   const isEndless=s==='endless',P=isEndless?{waves:[makeEndlessWave(0)],power:1}:planWaves(c,s);
   const maxH=SV.keepsake==='ribbon'?125:100;
-  S={c:isEndless?1:c,s,endless:isEndless,key:isEndless?'endless':((c+1)+'-'+s),waves:P.waves,power:P.power,wave:-1,wt:0,wi:0,next:0.6,gap:null,allies:[],enemies:[],fx:[],texts:[],queue:[],t:0,over:false,heart:maxH,hmax:maxH,br:7,dbCd:0,resT:0,sel:null,dragSel:null,deck,
+  S={c:isEndless?1:c,s,endless:isEndless,key:isEndless?'endless':((c+1)+'-'+s),waves:P.waves,power:P.power,wave:-1,wt:0,wi:0,next:0.6,gap:null,allies:[],enemies:[],fx:[],texts:[],queue:[],t:0,over:false,paused:false,heart:maxH,hmax:maxH,br:7,dbCd:0,resT:0,sel:null,dragSel:null,deck,
     hand:deck.map(id=>({id,st:'ready',cd:0,cdMax:1})),bonus:bonusOf(deck),word:null,banner:null,cut:null,ai:.5,shake:0,flash:0,heartHit:0,hudT:0,quieted:0,sndT:0,combo:0,comboT:0};
   S.harm=S.bonus.harm;S.critP=S.bonus.crit;
   const kp=KEEPSAKES.find(k=>k.id===SV.keepsake)||KEEPSAKES[0];
-  if($('bKeepsake'))$('bKeepsake').textContent=kp.ic+' '+kp.n;
-  for(const id of screens)$(id).hidden=true;$('bhud').hidden=false;layout();buildHand();
+  if($('bKeepsake')){$('bKeepsake').textContent=kp.ic;$('bKeepsake').title=kp.n+': '+kp.desc;$('bKeepsake').onclick=()=>{if(S)txtAt(W/2,92,kp.ic+' '+kp.n+' · '+kp.desc,GOLD)}}
+  for(const id of screens)$(id).hidden=true;$('bpause').hidden=true;$('bhud').hidden=false;layout();buildHand();
   $('deepBreathBtn').onclick=()=>{Sound.init();castDeepBreath()};
   Sound.setMode(s===STAGES_PER||isEndless?'boss':'battle',2);syncBattleBtns();
   S.banner={txt:isEndless?'the long night begins':(S.bonus.list.length?S.bonus.list.map(b=>b.n).join(' · '):'here they come'),t:1.4,small:1};updHud()}
@@ -1176,20 +1254,21 @@ function buildHand(){const h=$('hand');h.style.gridTemplateColumns='repeat('+Mat
   h.querySelectorAll('.hc').forEach(b=>{const c=S.hand[+b.dataset.i];c.el=b;c.cdOver=b.querySelector('.cdOver');c.cnt=b.querySelector('.cnt');c.ub=b.querySelector('.ub');c.stx=b.querySelector('.st');
     b.addEventListener('pointerdown',e=>{e.preventDefault();cardDown(c)});b.addEventListener('pointerup',e=>cardUp(c,e.clientX,e.clientY))})}
 function readyUlt(id){if(!S)return null;return S.allies.find(a=>a.alive&&a.id===id&&a.ult>=100)}
-function cardDown(c){if(!S||S.over)return;Sound.init();
+let skipNextUp=false;
+function cardDown(c){if(!S||S.over||S.paused)return;Sound.init();
   if(c.st!=='ready')return;S.sel=S.sel===c?null:c;S.dragSel=S.sel;Sound.play('click');updHud()}
-function cardUp(c,x,y){if(!S||S.dragSel!==c)return;S.dragSel=null;if(y<H*.8){const lane=laneAt(x,y);if(lane!=null)deploy(c,lane)}}
-cv.addEventListener('pointerdown',e=>{if(!S||S.over)return;const rect=cv.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top;
+function cardUp(c,x,y){if(!S||S.paused||S.dragSel!==c)return;S.dragSel=null;if(y<H*.8){const lane=laneAt(x,y);if(lane!=null)deploy(c,lane)}}
+cv.addEventListener('pointerdown',e=>{if(!S||S.over||S.paused)return;const rect=cv.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top;
   const readyAlly=S.allies.find(a=>a.alive&&a.ult>=100&&Math.hypot(a.x-px,a.y-py)<a.r*2.2);
-  if(readyAlly){fireUlt(readyAlly);e.stopPropagation()}});
-cv.addEventListener('pointerup',e=>{if(!S||!S.sel||S.over)return;const rect=cv.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top;
+  if(readyAlly){skipNextUp=true;fireUlt(readyAlly);e.stopPropagation()}});
+cv.addEventListener('pointerup',e=>{if(skipNextUp){skipNextUp=false;return}if(!S||!S.sel||S.over||S.paused)return;const rect=cv.getBoundingClientRect(),px=e.clientX-rect.left,py=e.clientY-rect.top;
   const lane=laneAt(px,py);if(lane!=null)deploy(S.sel,lane)});
-function deploy(c,lane){const cost=costOf(c.id);if(c.st!=='ready')return false;if(S.br<cost){txtAt(W/2,H*.8-6,'need '+cost+' breath','#cfc9dc');return false}
+function deploy(c,lane){const cost=costOf(c.id);if(!S||S.over||S.paused||c.st!=='ready')return false;if(S.br<cost){txtAt(W/2,H*.8-6,'need '+cost+' breath','#cfc9dc');return false}
   S.br-=cost;const cd=1.4+cost*0.45;c.st='cooldown';c.cd=cd;c.cdMax=cd;const u=spawnAlly(c.id,lane);S.sel=null;S.dragSel=null;
   Sound.play('form');buzz(14);burst(u.x,u.y,EL[u.el].c,16);ring(u.x,u.y,u.r*.4,u.r*2.2,EL[u.el].c);updHud();return true}
 function castDeepBreath(){
   const dbCost=SV.keepsake==='pebble'?3:4,dbCd=SV.keepsake==='pebble'?18:24;
-  if(!S||S.over||S.dbCd>0||S.br<dbCost)return;
+  if(!S||S.over||S.paused||S.dbCd>0||S.br<dbCost)return;
   S.br-=dbCost;S.dbCd=dbCd;Sound.play('win');buzz([40,60,80]);S.flash=.25;S.shake=.15;
   S.heart=Math.min(S.hmax,S.heart+8);
   S.texts.push({x:W/2,y:H*.54,txt:'“breathe in... breathe out”',col:'#fff0c8',t:1.8,max:1.8,big:1});
@@ -1339,7 +1418,7 @@ function aiStep(){
   if(S.br>=costOf(top.id))deploy(top,lane);else if(close){const cheap=order.find(c=>costOf(c.id)<=S.br);if(cheap)deploy(cheap,lane)}}
 
 /* ---- the main update ---- */
-function update(dt){if(!S)return;
+function update(dt){if(!S||S.paused)return;
   for(let i=S.queue.length-1;i>=0;i--){const q=S.queue[i];q.t-=dt;if(q.t<=0){S.queue.splice(i,1);q.fn()}}
   if(S.over){
     if(S.victoryState){
@@ -1448,7 +1527,44 @@ function tickFx(ds){for(let i=S.fx.length-1;i>=0;i--){const f=S.fx[i];f.life-=ds
   if(S.banner){S.banner.t-=ds;if(S.banner.t<=0)S.banner=null}if(S.word){S.word.t-=ds;if(S.word.t<=0)S.word=null}
   S.shake=Math.max(0,S.shake-ds);S.flash=Math.max(0,S.flash-ds);S.heartHit=Math.max(0,S.heartHit-ds);if(S.cut){S.cut.t-=ds/.75*(S.over?1:1);if(S.cut.t<=0)S.cut=null}}
 
-function finish(won){if(S.over)return;S.over=true;S.sel=null;$('who').textContent='';Sound.setPresence({});
+const REKINDLE_MSG={closed:'the ad was closed early, so no rekindle this time',unavailable:'no ad is ready right now. try again in a moment'};
+function bindReviveBtn(){
+  const b=$('rRevive');if(!b)return;
+  b.onclick=()=>{b.disabled=true;if($('rMsg'))$('rMsg').textContent='';
+    Ads.show(r=>{b.disabled=false;if(r==='rewarded'){$('bresult').hidden=true;rekindleBattle()}else if($('rMsg'))$('rMsg').textContent=REKINDLE_MSG[r]||REKINDLE_MSG.unavailable})};
+}
+function rekindleBattle(){
+  if(!S)return;
+  S.over=false;
+  S.paused=false;
+  S.defeatState=null;
+  S.continued=true;
+  S.heart=Math.max(1,Math.floor(S.hmax*0.5));
+  S.br=Math.min(BMAX,S.br+4);
+  for(const e of S.enemies){
+    if(e.alive){
+      if(e.z<10)e.z=Math.min(ZF,e.z+10);
+      e.stun=Math.max(e.stun||0,2.5);
+      place(e);
+    }
+  }
+  for(const a of S.allies){
+    if(a.alive){
+      a.hp=Math.max(a.hp,Math.floor(a.max*0.5));
+      a.happy=1.5;
+    }
+  }
+  burst(W/2,H*.4,GOLD,30);
+  S.flash=.5;
+  S.banner={txt:'“the spark returns!”',t:2.2};
+  Sound.play('level');
+  Sound.setMode(S.s===STAGES_PER||S.endless?'boss':'battle',2);
+  Sound.setPresence({boss:S.enemies.some(e=>e.alive&&e.boss),elite:S.enemies.some(e=>e.alive&&e.elite),count:S.enemies.filter(e=>e.alive).length});
+  Ads.gameplayStart();
+  updHud();
+}
+
+function finish(won){if(S.over)return;S.over=true;S.paused=false;$('bpause').hidden=true;S.sel=null;$('who').textContent='';Sound.setPresence({});Ads.gameplayStop();
   if(S.endless){
     const wavesCleared=S.wave,gained=wavesCleared*15,wNum=S.wave+1;
     if(wNum>(SV.bestNightWave||0))SV.bestNightWave=wNum;
@@ -1458,13 +1574,18 @@ function finish(won){if(S.over)return;S.over=true;S.sel=null;$('who').textConten
     Sound.play('lose');
     setTimeout(()=>{
       if(!S)return;
+      const canRevive=Ads.on()&&!S.continued;
       $('bresultBody').innerHTML='<h2>the night was long</h2>'
         +'<div class="stars" style="font-size:24px">✦ wave '+wNum+' reached ✦</div>'
         +'<div class="note">record: wave '+(SV.bestNightWave||1)+' · '+S.quieted+' shadows quieted</div>'
         +'<div class="reward">+'+gained+' ✦ starlight gathered</div>'
-        +'<div class="row"><button class="btn" id="rAgain">try again</button><button class="btn ghost" id="rHome">home</button></div>';
+        +'<div class="row">'
+        +(canRevive?'<button class="btn" id="rRevive" style="background:linear-gradient(135deg,#ffd98a,#8ec9ee);color:#15161f;font-weight:700">✨ rekindle light (watch ad)</button>':'')
+        +'<button class="btn '+(canRevive?'ghost':'')+'" id="rAgain">try again</button><button class="btn ghost" id="rHome">home</button></div>'
+        +'<div class="note" id="rMsg" style="min-height:1.2em;color:var(--coral)"></div>';
       $('bresult').hidden=false;
       const close=()=>{ $('bresult').hidden=true; Sound.setPresence({}); S=null; };
+      bindReviveBtn();
       $('rAgain').onclick=()=>{ close(); startBattle(0, 'endless'); };
       $('rHome').onclick=()=>{ close(); show('home'); };
     }, 1500);
@@ -1498,15 +1619,29 @@ function finish(won){if(S.over)return;S.over=true;S.sel=null;$('who').textConten
     +'<div class="sgRow '+(won&&hp>=.4?'met':'')+'"><span>★ Light unbroken ≥ 40% ('+Math.round(hp*100)+'%)</span><b>'+(won&&hp>=.4?'✓':'—')+'</b></div>'
     +'<div class="sgRow '+(won&&hp>=.8?'met':'')+'"><span>★ Radiant triumph ≥ 80% ('+Math.round(hp*100)+'%)</span><b>'+(won&&hp>=.8?'✓':'—')+'</b></div>'
     +'</div>';
+  const canRevive=!won&&Ads.on()&&!S.continued;
   setTimeout(()=>{if(!S)return;$('bresultBody').innerHTML=won
     ?'<h2>the light held</h2><div class="stars" style="font-size:26px">'+'★'.repeat(stars)+'☆'.repeat(3-stars)+'</div>'+sgHTML+'<div class="note">your light: '+Math.round(hp*100)+'% · '+S.quieted+' shadows quieted</div><div class="reward">+'+light+' ✦</div><div class="note">+'+xp+' xp for each ally in your team'+(ups.length?' · level up: '+ups.join(', '):'')+(first?' · first time bonus':'')+'</div><div class="row"><button class="btn" id="rNext">'+(isBoss?'back to the story':'next stage')+'</button><button class="btn ghost" id="rAgain">again</button><button class="btn ghost" id="rHome">home</button></div>'
-    :'<h2>your light went out</h2>'+sgHTML+'<div class="note">'+defeatTip+'</div><div class="row"><button class="btn" id="rAgain">try again</button><button class="btn ghost" id="rTeam">change team</button><button class="btn ghost" id="rHome">home</button></div>';
+    :'<h2>your light went out</h2>'+sgHTML+'<div class="note">'+defeatTip+'</div><div class="row">'
+      +(canRevive?'<button class="btn" id="rRevive" style="background:linear-gradient(135deg,#ffd98a,#8ec9ee);color:#15161f;font-weight:700">✨ rekindle light (watch ad)</button>':'')
+      +'<button class="btn '+(canRevive?'ghost':'')+'" id="rAgain">try again</button><button class="btn ghost" id="rTeam">change team</button><button class="btn ghost" id="rHome">home</button></div>'
+      +'<div class="note" id="rMsg" style="min-height:1.2em;color:var(--coral)"></div>';
     $('bresult').hidden=false;
     const close=()=>{$('bresult').hidden=true;Sound.setPresence({});S=null};
+    bindReviveBtn();
     $('rAgain').onclick=()=>{const c=S.c,s=S.s;close();startBattle(c,s)};$('rHome').onclick=()=>{close();show('home')};
     if($('rTeam'))$('rTeam').onclick=()=>{close();show('allies')};
     if($('rNext'))$('rNext').onclick=()=>{const c=S.c,s=S.s;close();if(isBoss)show('story');else startBattle(c,s+1)}},1700)}
-$('flee').onclick=()=>{if(!S)return;Sound.setPresence({});Sound.play('click');S=null;show('story')};
+function toggleBattlePause(){
+  if(!S||S.over)return;
+  S.paused=!S.paused;
+  $('bpause').hidden=!S.paused;
+  Sound.setPaused(S.paused);
+  if(S.paused)Ads.gameplayStop();else{last=performance.now();Ads.gameplayStart()}
+}
+$('flee').onclick=()=>{Sound.play('click');toggleBattlePause()};
+$('bpResume').onclick=()=>{Sound.play('click');toggleBattlePause()};
+$('bpQuit').onclick=()=>{Sound.play('click');$('bpause').hidden=true;Sound.setPaused(false);Ads.gameplayStop();Sound.setPresence({});S=null;show('story')};
 function syncBattleBtns(){$('autoBtn').classList.toggle('off',!AUTO);$('speedBtn').textContent='×'+SPD}
 $('autoBtn').onclick=()=>{AUTO=!AUTO;store.set('kindred.auto',AUTO?'1':'0');if(S)S.sel=null;syncBattleBtns();updHud()};
 $('speedBtn').onclick=()=>{SPD=SPD===1?1.5:SPD===1.5?2:1;store.set('kindred.speed',String(SPD));syncBattleBtns()};
@@ -1827,16 +1962,16 @@ function render(dt){ctx.setTransform(DPR,0,0,DPR,0,0);if(!S){drawBg(dt);menuScen
   if(S.cut)drawCut(S.cut);if(S.flash>0){ctx.fillStyle='rgba(255,244,214,'+(S.flash*1.2)+')';ctx.fillRect(0,0,W,H)}}
 
 let last=performance.now();
-function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,Math.max(0,(now-last)/1000));last=now;try{update(dt)}catch(e){console.error(e)}try{render(dt)}catch(e){console.error(e)}}
+function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,Math.max(0,(now-last)/1000));last=now;try{update(dt)}catch(e){console.error(e)}try{render(S&&S.paused?0:dt)}catch(e){console.error(e)}}
 
 /* ================= settings ================= */
 function syncToggles(){for(const [k,id] of [['music','musicTog'],['sfx','sfxTog']])$(id).classList.toggle('off',!Sound.opts[k]);$('vibTog').classList.toggle('off',!VIB)}
 $('musicTog').onclick=()=>{Sound.init();Sound.toggle('music');syncToggles()};$('sfxTog').onclick=()=>{Sound.init();Sound.toggle('sfx');syncToggles()};
 $('vibTog').onclick=()=>{VIB=!VIB;store.set('kindred.vib',VIB?'1':'0');syncToggles();buzz(30)};
 addEventListener('pointerdown',()=>Sound.init(),{once:true});
-document.addEventListener('visibilitychange',()=>Sound.setHidden(document.hidden));
-addEventListener('apkpause',()=>Sound.setHidden(true));addEventListener('apkresume',()=>Sound.setHidden(false));
-addEventListener('apkback',e=>{if(!$('detail').hidden){$('detail').hidden=true;e.preventDefault()}else if(S){S=null;show('story');e.preventDefault()}else if(scr!=='home'){show('home');e.preventDefault()}});
+document.addEventListener('visibilitychange',()=>{Sound.setHidden(document.hidden);if(document.hidden&&S&&!S.over&&!S.paused)toggleBattlePause()});
+addEventListener('apkpause',()=>{Sound.setHidden(true);if(S&&!S.over&&!S.paused)toggleBattlePause()});addEventListener('apkresume',()=>Sound.setHidden(false));
+addEventListener('apkback',e=>{if(!$('detail').hidden){$('detail').hidden=true;e.preventDefault()}else if(!$('vignetteModal').hidden){$('vignetteModal').hidden=true;e.preventDefault()}else if(S&&!S.over){toggleBattlePause();e.preventDefault()}else if(scr!=='home'){show('home');e.preventDefault()}});
 resize();syncToggles();show('home');requestAnimationFrame(loop);
 if(/[?&]debug\b/.test(location.search))window.KD={get S(){return S},get SV(){return SV},startBattle,deploy,fireUlt,aiStep,callAllies,get EHP(){return EHP},set EHP(v){EHP=v},get EATK(){return EATK},set EATK(v){EATK=v},get HPK(){return HPK},set HPK(v){HPK=v},set NB(v){NB=v},set NK(v){NK=v},save,reset(){SV=freshSave();save();refresh()},update,setAuto(v){AUTO=v},Sound,drawHero,cardArt,glowAt,P3,laneAt,layout};
 })();
